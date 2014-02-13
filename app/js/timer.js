@@ -1,7 +1,7 @@
 angular.module('timer', [])
   .directive('timer', ['$compile', function ($compile) {
     return  {
-      restrict: 'E',
+      restrict: 'EA',
       replace: false,
       scope: {
         interval: '=interval',
@@ -26,9 +26,11 @@ angular.module('timer', [])
         $scope.startTime = null;
         $scope.endTime = null;
         $scope.timeoutId = null;
-        $scope.countdown = $scope.countdownattr && parseInt($scope.countdownattr, 10) >= 0 ? parseInt($scope.countdownattr, 10) : undefined;
+        $scope.countdown = $scope.countdownattr && parseInt($scope.countdownattr, 10) >= 0 ? angular.copy(parseInt($scope.countdownattr, 10)) : undefined;
         $scope.isRunning = false;
-
+        // Countdown timestamp to avoid time drifting due to hibernation of computer
+        countdownTimestamp = new Date().getTime();
+        
         $scope.$on('timer-start', function () {
           $scope.start();
         });
@@ -46,16 +48,25 @@ angular.module('timer', [])
         });
 
         $scope.$on('timer-set-countdown', function (e, countdown) {
-          $scope.countdown = countdown;
+          countdownReset(countdown);
         });
-
+        
         function resetTimeout() {
           if ($scope.timeoutId) {
             clearTimeout($scope.timeoutId);
           }
         }
+        
+        function countdownReset(countdown) {
+          if (countdown) {
+            $scope.countdown = countdown;
+            // set new timestamp at reset
+            countdownTimestamp = new Date().getTime();
+          }
+        }
 
         $scope.start = $element[0].start = function () {
+          if (!countdownTimestamp) new Date().getTime();
           $scope.startTime = $scope.startTimeAttr ? new Date($scope.startTimeAttr) : new Date();
           $scope.endTime = $scope.endTimeAttr ? new Date($scope.endTimeAttr) : null;
           $scope.countdown = $scope.countdownattr && parseInt($scope.countdownattr, 10) > 0 ? parseInt($scope.countdownattr, 10) : undefined;
@@ -105,6 +116,7 @@ angular.module('timer', [])
 
           $scope.addCDSeconds = $element[0].addCDSeconds = function(extraSeconds){
             $scope.countdown += extraSeconds;
+            countdownTimestamp = countdownTimestamp + (extraSeconds * 1000);
             $scope.$digest();
           };
 
@@ -147,6 +159,13 @@ angular.module('timer', [])
             $scope.$digest();
           }, $scope.interval - adjustment);
 
+          // Check if time has drifted, for example if a computer has awoken 
+          // after being put to sleep or hibernation
+          if ( (countdownTimestamp + ($scope.countdown * 1000)) - new Date().getTime() <= 0) {
+            // Set countdown to zero as time has elapsed
+            $scope.countdown = 0;
+          }
+          
           $scope.$emit('timer-tick', {timeoutId: $scope.timeoutId, millis: $scope.millis});
 
           if ($scope.countdown > 0) {
